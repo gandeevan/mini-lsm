@@ -1,5 +1,6 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::BTreeMap, marker::PhantomData};
+use std::ops::Bound::{Included, Excluded};
 
 pub trait Key: Ord + Clone + Serialize + DeserializeOwned {}
 impl<T> Key for T where T: Ord + Clone + Serialize + DeserializeOwned {}
@@ -13,19 +14,19 @@ pub struct DB<K: Key, V: Value> {
     phantom_value: PhantomData<V>,
 }
 
-pub struct DBIterator<'a, K: Key, V: Value> {
-    db: &'a DB<K, V>,
+pub struct Iter<'a, K: Key, V: Value> {
+    it: std::collections::btree_map::Range<'a, K, V>,
 }
 
-impl<'a, K, V> Iterator for DBIterator<'a, K, V>
+impl<'a, K, V> Iterator for Iter<'a, K, V>
 where
     K: Key,
     V: Value,
 {
-    type Item = (K, V);
+    type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        return None;
+        self.it.next()
     }
 }
 
@@ -55,17 +56,20 @@ where
         return Ok(self.memtable.remove(key).is_some());
     }
 
-    pub fn scan(&self, start: &K, end: &K) -> Result<DBIterator<K, V>, String> {
-        return Err(String::from("Not Implemented"));
+    pub fn scan(&self, start: &K, end: &K) -> Result<Iter<K, V>, String> {
+        return Ok(Iter {
+            it: self.memtable.range(start..end),
+        });
     }
 }
 
-#[cfg(test)]
-mod test_checkpoint_1 {
 
+
+#[cfg(test)]
+mod test_utils {
     use super::*;
 
-    fn populate(count: i32, kvstore: &mut DB<i32, i32>) -> Vec<(i32, i32)> {
+    pub fn populate(count: i32, kvstore: &mut DB<i32, i32>) -> Vec<(i32, i32)> {
         let mut data: Vec<(i32, i32)> = vec![];
         for i in 0..count {
             data.push((i, i));
@@ -80,7 +84,7 @@ mod test_checkpoint_1 {
         data
     }
 
-    fn update(data: &mut Vec<(i32, i32)>, kvstore: &mut DB<i32, i32>) {
+    pub fn update(data: &mut Vec<(i32, i32)>, kvstore: &mut DB<i32, i32>) {
         for (_, value) in data.iter_mut() {
             *value = 2 * (*value);
         }
@@ -92,7 +96,7 @@ mod test_checkpoint_1 {
         }
     }
 
-    fn validate(expected: &Vec<(i32, i32)>, kvstore: &DB<i32, i32>) {
+    pub fn validate(expected: &Vec<(i32, i32)>, kvstore: &DB<i32, i32>) {
         for (key, value) in expected {
             assert_eq!(
                 kvstore
@@ -103,6 +107,12 @@ mod test_checkpoint_1 {
             );
         }
     }
+}
+
+#[cfg(test)]
+mod test_checkpoint_1 {
+
+   use super::*;
 
     #[test]
     fn insert_or_update() {
@@ -110,10 +120,10 @@ mod test_checkpoint_1 {
         let count = 1000;
 
         // Test inserts
-        let mut data = populate(count, &mut kvstore);
+        let mut data = test_utils::populate(count, &mut kvstore);
 
         // Test updates
-        update(&mut data, &mut kvstore)
+        test_utils::update(&mut data, &mut kvstore)
     }
 
     #[test]
@@ -125,12 +135,12 @@ mod test_checkpoint_1 {
         assert!(kvstore.get(&1).expect("Get failed").is_none());
 
         // Populate the KVStore and validate the data
-        let mut data = populate(count, &mut kvstore);
-        validate(&data, &mut kvstore);
+        let mut data = test_utils::populate(count, &mut kvstore);
+        test_utils::validate(&data, &mut kvstore);
 
         // Update all the values and validate the data
-        update(&mut data, &mut kvstore);
-        validate(&data, &mut kvstore);
+        test_utils::update(&mut data, &mut kvstore);
+        test_utils::validate(&data, &mut kvstore);
     }
 
     #[test]
@@ -139,8 +149,8 @@ mod test_checkpoint_1 {
         let count = 1000;
 
         // Populate the KVStore and validate the data
-        let mut data = populate(count, &mut kvstore);
-        validate(&data, &mut kvstore);
+        let mut data = test_utils::populate(count, &mut kvstore);
+        test_utils::validate(&data, &mut kvstore);
 
         // Delete all values and validate that delete returns true
         for (key, _) in data.iter() {
@@ -156,6 +166,23 @@ mod test_checkpoint_1 {
 
 #[cfg(test)]
 mod test_checkpoint_2 {
+    use super::*;
+
     #[test]
-    fn scan() {}
+    fn scan() {
+        let mut kvstore = DB::<i32, i32>::new();
+        let count = 1000;
+
+        let mut data = test_utils::populate(count, &mut kvstore);
+        data.sort();
+
+        let start_idx = data.len()/2;
+        let end_idx = data.len()-1;
+
+        let mut result = Vec::new();
+        for (key, value) in kvstore.scan(&data[start_idx].0, &data[end_idx].0).expect("range query returned an error") {
+            result.push((*key, *value));
+        }
+        assert_eq!(result, &data[start_idx..end_idx]);
+    }
 }
