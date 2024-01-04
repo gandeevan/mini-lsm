@@ -12,3 +12,8 @@ path = "src/lib.rs"
 [dependencies]
 serde = "1.0.193"
 rand = "0.8.5"
+criterion = "0.5.1"
+
+[[bench]]
+name = "lsm_benchmark"
+harness = false
