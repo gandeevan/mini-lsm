@@ -1,5 +1,7 @@
+mod memtable;
+
+use memtable::Memtable;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::BTreeMap, marker::PhantomData};
 
 pub trait Key: Ord + Clone + Serialize + DeserializeOwned {}
 impl<T> Key for T where T: Ord + Clone + Serialize + DeserializeOwned {}
@@ -8,13 +10,11 @@ pub trait Value: Clone + Serialize + DeserializeOwned {}
 impl<T> Value for T where T: Ord + Clone + Serialize + DeserializeOwned {}
 
 pub struct DB<K: Key, V: Value> {
-    memtable: BTreeMap<K, V>,
-    phantom_key: PhantomData<K>,
-    phantom_value: PhantomData<V>,
+    memtable: Memtable<K, V>,
 }
 
 pub struct Iter<'a, K: Key, V: Value> {
-    it: std::collections::btree_map::Range<'a, K, V>,
+    it: memtable::Iter<'a, K, V>
 }
 
 impl<'a, K, V> Iterator for Iter<'a, K, V>
@@ -36,32 +36,32 @@ where
 {
     pub fn new() -> DB<K, V> {
         DB {
-            memtable: BTreeMap::<K, V>::new(),
-            phantom_key: PhantomData::<K> {},
-            phantom_value: PhantomData::<V> {},
+            memtable: Memtable::<K, V>::new(),
         }
     }
 
     pub fn insert_or_update(&mut self, key: K, value: V) -> Result<(), String> {
-        self.memtable.insert(key, value);
-        return Ok(());
+        self.memtable.insert_or_update(key, value)
     }
 
     pub fn get(&self, key: &K) -> Result<Option<&V>, String> {
-        return Ok(self.memtable.get(key));
+        self.memtable.get(key)
     }
 
     pub fn delete(&mut self, key: &K) -> Result<bool, String> {
-        return Ok(self.memtable.remove(key).is_some());
+        self.memtable.delete(key)
     }
 
     pub fn scan(&self, start: &K, end: &K) -> Result<Iter<K, V>, String> {
+        let iter: Result<memtable::Iter<'_, K, V>, String> = self.memtable.scan(start,end);
+        if let Err(msg) = iter {
+            return Err(msg);
+        }
         return Ok(Iter {
-            it: self.memtable.range(start..end),
+            it: iter.unwrap(),
         });
     }
 }
-
 
 
 #[cfg(test)]
@@ -148,7 +148,7 @@ mod test_checkpoint_1 {
         let count = 1000;
 
         // Populate the KVStore and validate the data
-        let mut data = test_utils::populate(count, &mut kvstore);
+        let data = test_utils::populate(count, &mut kvstore);
         test_utils::validate(&data, &mut kvstore);
 
         // Delete all values and validate that delete returns true
@@ -161,11 +161,6 @@ mod test_checkpoint_1 {
             assert!(!kvstore.delete(&key).expect("Delete failed"));
         }
     }
-}
-
-#[cfg(test)]
-mod test_checkpoint_2 {
-    use super::*;
 
     #[test]
     fn scan() {
@@ -185,3 +180,4 @@ mod test_checkpoint_2 {
         assert_eq!(result, &data[start_idx..end_idx]);
     }
 }
+       
