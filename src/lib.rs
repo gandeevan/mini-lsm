@@ -1,5 +1,5 @@
+mod file_writer;
 mod memtable;
-
 use memtable::Memtable;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -14,7 +14,7 @@ pub struct DB<K: Key, V: Value> {
 }
 
 pub struct Iter<'a, K: Key, V: Value> {
-    it: memtable::Iter<'a, K, V>
+    it: memtable::Iter<'a, K, V>,
 }
 
 impl<'a, K, V> Iterator for Iter<'a, K, V>
@@ -53,16 +53,13 @@ where
     }
 
     pub fn scan(&self, start: &K, end: &K) -> Result<Iter<K, V>, String> {
-        let iter: Result<memtable::Iter<'_, K, V>, String> = self.memtable.scan(start,end);
+        let iter: Result<memtable::Iter<'_, K, V>, String> = self.memtable.scan(start, end);
         if let Err(msg) = iter {
             return Err(msg);
         }
-        return Ok(Iter {
-            it: iter.unwrap(),
-        });
+        return Ok(Iter { it: iter.unwrap() });
     }
 }
-
 
 #[cfg(test)]
 mod test_utils {
@@ -111,7 +108,7 @@ mod test_utils {
 #[cfg(test)]
 mod test_checkpoint_1 {
 
-   use super::*;
+    use super::*;
 
     #[test]
     fn insert_or_update() {
@@ -170,14 +167,16 @@ mod test_checkpoint_1 {
         let mut data = test_utils::populate(count, &mut kvstore);
         data.sort();
 
-        let start_idx = data.len()/2;
-        let end_idx = data.len()-1;
+        let start_idx = data.len() / 2;
+        let end_idx = data.len() - 1;
 
         let mut result = Vec::new();
-        for (key, value) in kvstore.scan(&data[start_idx].0, &data[end_idx].0).expect("range query returned an error") {
+        for (key, value) in kvstore
+            .scan(&data[start_idx].0, &data[end_idx].0)
+            .expect("range query returned an error")
+        {
             result.push((*key, *value));
         }
         assert_eq!(result, &data[start_idx..end_idx]);
     }
 }
-       
