@@ -3,14 +3,22 @@ use std::io::{self, BufWriter, Write};
 
 const DEFAULT_BUFFER_CAPACITY: usize = 4096;
 
-struct FileWriter {
+pub struct FileWriter {
     writer: BufWriter<File>,
 }
 
 impl FileWriter {
-    pub fn new(filepath: &str, options: OpenOptions) -> Result<FileWriter, io::Error> {
-        let file = options.open(filepath)?;
+    pub fn new(filepath: &str, truncate: bool) -> Result<FileWriter, io::Error> {
+        let mut options = OpenOptions::new();
+        options.create(true);
 
+        if truncate {
+            options.write(true).truncate(true);
+        } else {
+            options.append(true);
+        }
+
+        let file = options.open(filepath)?;
         Ok(FileWriter {
             writer: BufWriter::with_capacity(DEFAULT_BUFFER_CAPACITY, file),
         })
@@ -28,7 +36,7 @@ impl FileWriter {
     }
 
     pub fn sync(&mut self) -> io::Result<()> {
-        return self.writer.get_mut().sync_all();
+        self.flush().and_then(|_| self.writer.get_mut().sync_all())
     }
 }
 
@@ -44,7 +52,7 @@ mod tests {
         let filepath = "/tmp/test.txt";
         let mut options = OpenOptions::new();
         options.create(true).write(true).truncate(true);
-        let mut fw = FileWriter::new(filepath, options).expect("failed opening a file handle");
+        let mut fw = FileWriter::new(filepath, true).expect("failed opening a file handle");
 
         let mut random_bytes: Vec<u8> = vec![0; 10 * DEFAULT_BUFFER_CAPACITY];
         rand::thread_rng().fill_bytes(&mut random_bytes);

@@ -1,5 +1,8 @@
+mod buffer_consumer;
 mod file_writer;
+mod log_writer;
 mod memtable;
+
 use memtable::Memtable;
 use serde::{de::DeserializeOwned, Serialize};
 
