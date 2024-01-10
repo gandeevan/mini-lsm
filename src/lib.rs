@@ -1,7 +1,11 @@
+
+// TODO: Explore a cleaner way to incorporate all files into the compilation list, 
+// potentially eliminating the need to explicitly enumerate each module here.
 mod buffer_consumer;
 mod file_writer;
 mod log_writer;
 mod memtable;
+mod error;
 
 use memtable::Memtable;
 use serde::{de::DeserializeOwned, Serialize};

@@ -1,5 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};
+use crate::error::{Result, Error};
 
 const DEFAULT_BUFFER_CAPACITY: usize = 4096;
 
@@ -8,7 +9,7 @@ pub struct FileWriter {
 }
 
 impl FileWriter {
-    pub fn new(filepath: &str, truncate: bool) -> Result<FileWriter, io::Error> {
+    pub fn new(filepath: &str, truncate: bool) -> Result<FileWriter> {
         let mut options = OpenOptions::new();
         options.create(true);
 
@@ -18,25 +19,25 @@ impl FileWriter {
             options.append(true);
         }
 
-        let file = options.open(filepath)?;
+        let file = options.open(filepath).map_err(Error::Io)?;
         Ok(FileWriter {
             writer: BufWriter::with_capacity(DEFAULT_BUFFER_CAPACITY, file),
         })
     }
 
-    pub fn append(&mut self, data: &[u8]) -> io::Result<()> {
+    pub fn append(&mut self, data: &[u8]) -> Result<()> {
         if data.len() == 0 {
             return Ok(());
         }
-        self.writer.write_all(data)
+        self.writer.write_all(data).map_err(Error::Io)
     }
 
-    pub fn flush(&mut self) -> io::Result<()> {
-        self.writer.flush()
+    pub fn flush(&mut self) -> Result<()> {
+        self.writer.flush().map_err(Error::Io)
     }
 
-    pub fn sync(&mut self) -> io::Result<()> {
-        self.flush().and_then(|_| self.writer.get_mut().sync_all())
+    pub fn sync(&mut self) -> Result<()> {
+        self.flush().and_then(|_| self.writer.get_mut().sync_all().map_err(Error::Io))
     }
 }
 
