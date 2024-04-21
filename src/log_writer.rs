@@ -13,8 +13,9 @@ use num_derive::{FromPrimitive, ToPrimitive};
 // since only 2 bytes are allocated for the `size`
 // field in the log record.  
 const DEFAULT_BLOCK_SIZE: usize = 32 * 1024; 
-const MIN_RECORD_SIZE: usize = 8;  // CRC (4B) + Size (2B) + Type (1B) + Payload (1B)
-const BLOCK_PADDING: [u8; 7] = [0,0,0,0,0,0,0];
+const LOG_RECORD_HEADER_SIZE: usize = 7;
+const MIN_RECORD_SIZE: usize = LOG_RECORD_HEADER_SIZE + 1;  // CRC (4B) + Size (2B) + Type (1B) + Payload (1B)
+const BLOCK_PADDING: [u8; LOG_RECORD_HEADER_SIZE] = [0,0,0,0,0,0,0];
 
 #[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 enum RecordType {
@@ -73,7 +74,7 @@ impl<'a> LogRecord<'a> {
 
     pub fn len(&self) -> usize {
         // Header (7B) = CRC (4B) + Size (2B) + Type (1B) 
-        return 7 + self.payload.len();
+        return LOG_RECORD_HEADER_SIZE + self.payload.len();
     }
 }
 
@@ -130,7 +131,7 @@ impl LogWriter {
         while !pconsumer.done() {
             self.add_block_padding()?;
 
-            let consume_count = min(pconsumer.remaining(), self.remaining_block_capacity()); 
+            let consume_count = min(pconsumer.remaining(), self.remaining_block_capacity()-LOG_RECORD_HEADER_SIZE); 
             let payload = pconsumer.consume(consume_count);
             let rtype = {
                 if pconsumer.done() {
@@ -160,10 +161,11 @@ impl LogWriter {
 
 #[cfg(test)]
 mod tests {
-    use rand::RngCore;
+    use rand::{Rng, RngCore};
 
     use super::LogWriter;
 
+    #[test]
     fn test_write_small_payload() {
         let log_filepath = "/tmp/test.txt";
         let mut payload: Vec<u8> = vec![0; 256];
@@ -172,7 +174,12 @@ mod tests {
         writer.append(&payload).expect("Failed writing the payload");
     }
 
+    #[test]
     fn test_write_large_payload() {
-        // TODO
+        let log_filepath = "/tmp/test.txt";
+        let mut payload: Vec<u8> = vec![0; 4 * 1024 * 1024];
+        rand::thread_rng().fill_bytes(&mut payload);
+        let mut writer = LogWriter::new(log_filepath, true).expect("Failed to create a log writer");
+        writer.append(&payload).expect("Failed writing the payload");
     }
 }
