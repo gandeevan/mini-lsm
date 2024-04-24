@@ -64,7 +64,7 @@ impl DB {
 
     pub fn scan(&self, start: &[u8], end: &[u8]) -> Result<Iter, String> {
         let iter = self.memtable.scan(start, end);
-        return Ok(Iter { it: iter });
+        Ok(Iter { it: iter })
     }
 }
 

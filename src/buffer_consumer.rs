@@ -1,4 +1,4 @@
-use std::{cell::RefCell, cmp::min, io};
+use std::{cell::RefCell, cmp::min};
 
 pub struct BufferConsumer<'a> {
     buf: &'a [u8],

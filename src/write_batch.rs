@@ -35,7 +35,7 @@ impl<'a> Iterator for WriteBatchIterator<'a> {
         let value = &self.wb.entries[self.pos..self.pos + value_len];
         self.pos += value_len;
 
-        return Some((key, value));
+        Some((key, value))
     }
 }
 
@@ -87,7 +87,7 @@ impl WriteBatch {
 
     pub fn iter(&self) -> WriteBatchIterator {
         WriteBatchIterator {
-            wb: &self,
+            wb: self,
             pos: HEADER_SIZE,
         }
     }

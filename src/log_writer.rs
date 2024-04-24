@@ -6,7 +6,6 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use std::array::TryFromSliceError;
 use std::cmp::min;
-use std::fmt;
 
 // BLOCK_SIZE should not be greater than 65535
 // since only 2 bytes are allocated for the `size`
@@ -67,9 +66,9 @@ impl<'a> LogRecord<'a> {
     pub fn new(rtype: RecordType, payload: &[u8]) -> LogRecord {
         LogRecord {
             crc: crc32c::crc32c(payload),
-            rtype: rtype,
+            rtype,
             size: payload.len().try_into().unwrap(),
-            payload: payload,
+            payload,
         }
     }
 
