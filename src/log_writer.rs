@@ -40,10 +40,11 @@ struct LogRecord<'a> {
 fn bytes_to_type<'a, T: TryFrom<&'a [u8], Error = TryFromSliceError>>(
     bytes: &'a [u8],
 ) -> Result<T> {
-    bytes.try_into().map_err(Error::TryFromSliceError)
+    bytes.try_into().map_err(Error::TryFromSlice)
 }
 
 impl<'a> LogRecord<'a> {
+    #[allow(dead_code)]
     pub fn from_serialized_bytes(bytes: &[u8]) -> Result<LogRecord> {
         if bytes.len() < MIN_RECORD_SIZE {
             return Err(Error::WalRecordTooSmall(bytes.len(), MIN_RECORD_SIZE));
@@ -74,7 +75,7 @@ impl<'a> LogRecord<'a> {
 
     pub fn len(&self) -> usize {
         // Header (7B) = CRC (4B) + Size (2B) + Type (1B)
-        return LOG_RECORD_HEADER_SIZE + self.payload.len();
+        LOG_RECORD_HEADER_SIZE + self.payload.len()
     }
 }
 
@@ -102,7 +103,7 @@ impl LogWriter {
             self.fw.append(&BLOCK_PADDING[0..remaining_block_size])?;
         }
         self.block_pos = 0;
-        return Ok(());
+        Ok(())
     }
 
     fn append_record(&mut self, record: &LogRecord) -> Result<()> {
@@ -145,12 +146,10 @@ impl LogWriter {
                     } else {
                         RecordType::Last
                     }
+                } else if record_count == 0 {
+                    RecordType::First
                 } else {
-                    if record_count == 0 {
-                        RecordType::First
-                    } else {
-                        RecordType::Middle
-                    }
+                    RecordType::Middle
                 }
             };
 

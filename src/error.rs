@@ -1,4 +1,4 @@
-use std::{array::TryFromSliceError, io, result};
+use std::{array, io, result};
 
 use thiserror::Error;
 
@@ -17,7 +17,7 @@ pub enum Error {
     Io(#[source] io::Error),
 
     #[error("TryFromSliceError error: {0}")]
-    TryFromSliceError(#[source] TryFromSliceError),
+    TryFromSlice(#[source] array::TryFromSliceError),
 }
 
 pub type Result<T> = result::Result<T, Error>;

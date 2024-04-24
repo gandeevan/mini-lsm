@@ -7,8 +7,6 @@ mod log_writer;
 mod memtable;
 mod write_batch;
 
-use std::fmt::Write;
-
 use log_writer::LogWriter;
 use memtable::Memtable;
 
@@ -34,7 +32,7 @@ impl DB {
         let log_writer = LogWriter::new(log_file, false)?;
         Ok(DB {
             memtable: Memtable::new(),
-            log_writer: log_writer,
+            log_writer,
         })
     }
 

@@ -9,7 +9,7 @@ pub struct BufferConsumer<'a> {
 impl<'a> BufferConsumer<'a> {
     pub fn new(buf: &[u8]) -> BufferConsumer {
         BufferConsumer {
-            buf: buf,
+            buf,
             pos: RefCell::<usize>::new(0),
             remaining: RefCell::<usize>::new(buf.len()),
         }

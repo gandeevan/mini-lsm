@@ -1,6 +1,5 @@
 const HEADER_SIZE: usize = 16;
 const COUNT_OFFSET: usize = 0;
-const DEFAULT_BUFFER_CAPACITY: usize = 256;
 
 pub struct WriteBatch {
     entries: Vec<u8>,
@@ -36,6 +35,12 @@ impl<'a> Iterator for WriteBatchIterator<'a> {
         self.pos += value_len;
 
         Some((key, value))
+    }
+}
+
+impl Default for WriteBatch {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -94,7 +99,6 @@ impl WriteBatch {
 }
 
 mod tests {
-    use super::WriteBatch;
 
     #[test]
     fn write_and_read() {

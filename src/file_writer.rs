@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufWriter, Write};
+use std::io::{BufWriter, Write};
 
 const DEFAULT_BUFFER_CAPACITY: usize = 4096;
 
@@ -26,7 +26,7 @@ impl FileWriter {
     }
 
     pub fn append(&mut self, data: &[u8]) -> Result<()> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Ok(());
         }
         self.writer.write_all(data).map_err(Error::Io)
@@ -36,6 +36,7 @@ impl FileWriter {
         self.writer.flush().map_err(Error::Io)
     }
 
+    #[allow(dead_code)]
     pub fn sync(&mut self) -> Result<()> {
         self.flush()
             .and_then(|_| self.writer.get_mut().sync_all().map_err(Error::Io))
