@@ -1,55 +1,48 @@
-
 use std::collections::BTreeMap;
-use crate::{Key, Value};
-pub struct Iter<'a, K: Key, V: Value> {
-    it: std::collections::btree_map::Range<'a, K, V>,
+
+use tinyvec::TinyVec;
+pub struct Iter<'a> {
+    it: std::collections::btree_map::Range<'a, TinyVec<[u8; 16]>, TinyVec<[u8; 16]>>,
 }
 
-impl<'a, K, V> Iterator for Iter<'a, K, V>
-where
-    K: Key,
-    V: Value,
-{
-    type Item = (&'a K, &'a V);
+impl<'a> Iterator for Iter<'a> {
+    type Item = (&'a [u8], &'a [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.it.next()
+        self.it.next().map(|(k, v)| (k.as_slice(), v.as_slice()))
     }
 }
 
-
 // Single Threaded BTree Memtable
-pub struct Memtable<K: Key, V: Value> {
-    table: BTreeMap<K, V>,
+pub struct Memtable {
+    table: BTreeMap<TinyVec<[u8; 16]>, TinyVec<[u8; 16]>>,
 }
 
-impl<K, V> Memtable<K, V>
-where K: Key, V: Value {
-    pub fn new() -> Memtable<K, V> {
+impl Memtable {
+    pub fn new() -> Memtable {
         Memtable {
-            table: BTreeMap::<K, V>::new(),
+            table: BTreeMap::new(),
         }
     }
 
-    pub fn insert_or_update(&mut self, key: K, value: V) -> Result<(), String> {
-        self.table.insert(key, value);
-        return Ok(());
+    pub fn insert_or_update(&mut self, key: &[u8], value: &[u8]) -> () {
+        self.table.insert(tinyvec::TinyVec::from(key), tinyvec::TinyVec::from(value));
     }
 
-    pub fn get(&self, key: &K) -> Result<Option<&V>, String> {
-        return Ok(self.table.get(key));
+    pub fn get(&self, key: &[u8]) -> Option<&[u8]> {
+        // TODO: avoid copying the key to construct the TinyVec
+        return self.table.get(&tinyvec::TinyVec::from(key)).map(|v| v.as_slice());
     }
 
-    pub fn delete(&mut self, key: &K) -> Result<bool, String> {
-        return Ok(self.table.remove(key).is_some());
+    pub fn delete(&mut self, key: &[u8]) -> bool {
+        // TODO: avoid copying the key to construct the TinyVec
+        return self.table.remove(key).is_some();
     }
 
-
-    pub fn scan(&self, start: &K, end: &K) -> Result<Iter<K, V>, String> {
-        return Ok(Iter {
-            it: self.table.range(start..end),
-        });
+    pub fn scan(&self, start: &[u8], end: &[u8]) -> Iter {
+        // TODO: avoid copying the key to construct the TinyVec
+        return Iter {
+            it: self.table.range(tinyvec::TinyVec::from(start)..tinyvec::TinyVec::from(end)),
+        };
     }
 }
-
-

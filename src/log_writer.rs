@@ -79,7 +79,7 @@ impl<'a> LogRecord<'a> {
 }
 
 
-struct LogWriter {
+pub struct LogWriter {
     fw: FileWriter,
     block_pos: usize,
 }

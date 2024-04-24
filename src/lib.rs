@@ -6,73 +6,76 @@ mod file_writer;
 mod log_writer;
 mod memtable;
 mod error;
+mod write_batch;
 
+use std::fmt::Write;
+
+use log_writer::LogWriter;
 use memtable::Memtable;
-use serde::{de::DeserializeOwned, Serialize};
 
-pub trait Key: Ord + Clone + Serialize + DeserializeOwned {}
-impl<T> Key for T where T: Ord + Clone + Serialize + DeserializeOwned {}
 
-pub trait Value: Clone + Serialize + DeserializeOwned {}
-impl<T> Value for T where T: Ord + Clone + Serialize + DeserializeOwned {}
-
-pub struct DB<K: Key, V: Value> {
-    memtable: Memtable<K, V>,
+pub struct DB {
+    memtable: Memtable,
+    log_writer: LogWriter,
 }
 
-pub struct Iter<'a, K: Key, V: Value> {
-    it: memtable::Iter<'a, K, V>,
+pub struct Iter<'a> {
+    it: memtable::Iter<'a>,
 }
 
-impl<'a, K, V> Iterator for Iter<'a, K, V>
-where
-    K: Key,
-    V: Value,
+impl<'a> Iterator for Iter<'a>
 {
-    type Item = (&'a K, &'a V);
+    type Item = (&'a [u8], &'a [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.it.next()
     }
 }
 
-impl<K, V> DB<K, V>
-where
-    K: Key,
-    V: Value,
+impl DB
 {
-    pub fn new() -> DB<K, V> {
-        DB {
-            memtable: Memtable::<K, V>::new(),
+    pub fn new(log_file: &str) -> error::Result<DB> {
+        let log_writer = LogWriter::new(log_file, false)?;
+        Ok(DB {
+            memtable: Memtable::new(),
+            log_writer: log_writer,
+        })
+    }
+
+    pub fn insert_or_update(&mut self, key: &[u8], value: &[u8]) -> Result<(), error::Error> {
+        let mut wb = write_batch::WriteBatch::new();
+        wb.append(key, value);
+        self.insert_or_update_batch(&wb)
+    }
+
+    pub fn insert_or_update_batch(&mut self, batch: &write_batch::WriteBatch) -> Result<(), error::Error> {
+        for (key, value) in batch.iter() {
+            self.memtable.insert_or_update(key, value);
         }
+        self.log_writer.append(batch.as_bytes())
     }
 
-    pub fn insert_or_update(&mut self, key: K, value: V) -> Result<(), String> {
-        self.memtable.insert_or_update(key, value)
+    pub fn get(&self, key: &[u8]) -> Result<Option<&[u8]>, String> {
+        Ok(self.memtable.get(key))
     }
 
-    pub fn get(&self, key: &K) -> Result<Option<&V>, String> {
-        self.memtable.get(key)
+    pub fn delete(&mut self, key: &[u8]) -> Result<bool, String> {
+        Ok(self.memtable.delete(key))
     }
 
-    pub fn delete(&mut self, key: &K) -> Result<bool, String> {
-        self.memtable.delete(key)
-    }
-
-    pub fn scan(&self, start: &K, end: &K) -> Result<Iter<K, V>, String> {
-        let iter: Result<memtable::Iter<'_, K, V>, String> = self.memtable.scan(start, end);
-        if let Err(msg) = iter {
-            return Err(msg);
-        }
-        return Ok(Iter { it: iter.unwrap() });
+    pub fn scan(&self, start: &[u8], end: &[u8]) -> Result<Iter, String> {
+        let iter = self.memtable.scan(start, end);
+        return Ok(Iter { it: iter });
     }
 }
 
 #[cfg(test)]
 mod test_utils {
+    use num_traits::ToBytes;
+
     use super::*;
 
-    pub fn populate(count: i32, kvstore: &mut DB<i32, i32>) -> Vec<(i32, i32)> {
+    pub fn populate(count: i32, kvstore: &mut DB) -> Vec<(i32, i32)> {
         let mut data: Vec<(i32, i32)> = vec![];
         for i in 0..count {
             data.push((i, i));
@@ -80,46 +83,48 @@ mod test_utils {
 
         for (key, value) in data.iter() {
             kvstore
-                .insert_or_update(key.clone(), value.clone())
+                .insert_or_update(&key.to_le_bytes(), &value.to_le_bytes())
                 .expect("Insert failed");
         }
 
         data
     }
 
-    pub fn update(data: &mut Vec<(i32, i32)>, kvstore: &mut DB<i32, i32>) {
+    pub fn update(data: &mut Vec<(i32, i32)>, kvstore: &mut DB) {
         for (_, value) in data.iter_mut() {
             *value = 2 * (*value);
         }
 
         for (key, value) in data.iter() {
             kvstore
-                .insert_or_update(key.clone(), value.clone())
+                .insert_or_update(&key.to_le_bytes(), &value.to_le_bytes())
                 .expect("Update failed");
         }
     }
 
-    pub fn validate(expected: &Vec<(i32, i32)>, kvstore: &DB<i32, i32>) {
+    pub fn validate(expected: &Vec<(i32, i32)>, kvstore: &DB) {
         for (key, value) in expected {
             assert_eq!(
                 kvstore
-                    .get(key)
+                    .get(key.to_be_bytes().as_ref())
                     .expect("Get failed")
                     .expect("Expected a non-empty value"),
-                value
+                value.to_le_bytes()
             );
         }
     }
 }
 
 #[cfg(test)]
-mod test_checkpoint_1 {
+mod test_db {
+
+    use num_traits::ToBytes;
 
     use super::*;
 
     #[test]
     fn insert_or_update() {
-        let mut kvstore = DB::<i32, i32>::new();
+        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
         let count = 1000;
 
         // Test inserts
@@ -131,11 +136,12 @@ mod test_checkpoint_1 {
 
     #[test]
     fn get() {
-        let mut kvstore = DB::<i32, i32>::new();
+        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
         let count = 1000;
 
         // Check that a non-exisitent key returns an empty value
-        assert!(kvstore.get(&1).expect("Get failed").is_none());
+        assert!(kvstore.get((1 as i32).to_le_bytes().as_ref()).expect("Get failed").is_none());
+        
 
         // Populate the KVStore and validate the data
         let mut data = test_utils::populate(count, &mut kvstore);
@@ -148,7 +154,7 @@ mod test_checkpoint_1 {
 
     #[test]
     fn delete() {
-        let mut kvstore = DB::<i32, i32>::new();
+        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
         let count = 1000;
 
         // Populate the KVStore and validate the data
@@ -157,18 +163,18 @@ mod test_checkpoint_1 {
 
         // Delete all values and validate that delete returns true
         for (key, _) in data.iter() {
-            assert!(kvstore.delete(key).expect("Delete failed"));
+            assert!(kvstore.delete(key.to_le_bytes().as_ref()).expect("Delete failed"));
         }
 
         // Try deleting all the keys again and validate that delete returns false
         for (key, _) in data.iter() {
-            assert!(!kvstore.delete(&key).expect("Delete failed"));
+            assert!(!kvstore.delete(key.to_le_bytes().as_ref()).expect("Delete failed"));
         }
     }
 
     #[test]
     fn scan() {
-        let mut kvstore = DB::<i32, i32>::new();
+        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
         let count = 1000;
 
         let mut data = test_utils::populate(count, &mut kvstore);
@@ -179,10 +185,12 @@ mod test_checkpoint_1 {
 
         let mut result = Vec::new();
         for (key, value) in kvstore
-            .scan(&data[start_idx].0, &data[end_idx].0)
+            .scan(data[start_idx].0.to_le_bytes().as_ref(), &data[end_idx].0.to_le_bytes().as_ref())
             .expect("range query returned an error")
         {
-            result.push((*key, *value));
+            let key = i32::from_le_bytes(key.try_into().unwrap());
+            let value = i32::from_le_bytes(value.try_into().unwrap());
+            result.push((key, value));
         }
         assert_eq!(result, &data[start_idx..end_idx]);
     }
