@@ -5,11 +5,11 @@ Mini-LSM is a disk-based key-value store library built in Rust for educational p
 ## Features
 
 - [x] Write-Ahead Logging (WAL): Mini-LSM ensures durability by recording all write operations to a write-ahead log before applying them to the main storage.
-- [] Recovery from WAL: In case of a system failure, Mini-LSM can recover the database state by replaying the operations stored in the write-ahead log.
-- [] Log Spilling: When the in-memory buffer reaches a certain threshold, Mini-LSM spills the data to disk by creating immutable log files.
-- [] Log Compaction: Mini-LSM performs periodic compaction of log files to optimize storage space and improve read performance.
-- [] Asynchronous I/O: Mini-LSM leverages Rust's asynchronous I/O capabilities to enable efficient non-blocking I/O operations, enhancing performance and scalability.
-- [] Thread-per-Core Architecture: Mini-LSM utilizes a thread-per-core architecture, where each thread is pinned to a specific CPU core. This architecture maximizes CPU utilization and minimizes context switching overhead, resulting in improved performance and scalability.
+- [ ] Recovery from WAL: In case of a system failure, Mini-LSM can recover the database state by replaying the operations stored in the write-ahead log.
+- [ ] Log Spilling: When the in-memory buffer reaches a certain threshold, Mini-LSM spills the data to disk by creating immutable log files.
+- [ ] Log Compaction: Mini-LSM performs periodic compaction of log files to optimize storage space and improve read performance.
+- [ ] Asynchronous I/O: Mini-LSM leverages Rust's asynchronous I/O capabilities to enable efficient non-blocking I/O operations, enhancing performance and scalability.
+- [ ] Thread-per-Core Architecture: Mini-LSM utilizes a thread-per-core architecture, where each thread is pinned to a specific CPU core. This architecture maximizes CPU utilization and minimizes context switching overhead, resulting in improved performance and scalability.
 
 ## Getting Started
 
