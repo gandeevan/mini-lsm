@@ -1,6 +1,6 @@
+use crate::error::{Error, Result};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};
-use crate::error::{Result, Error};
 
 const DEFAULT_BUFFER_CAPACITY: usize = 4096;
 
@@ -37,7 +37,8 @@ impl FileWriter {
     }
 
     pub fn sync(&mut self) -> Result<()> {
-        self.flush().and_then(|_| self.writer.get_mut().sync_all().map_err(Error::Io))
+        self.flush()
+            .and_then(|_| self.writer.get_mut().sync_all().map_err(Error::Io))
     }
 }
 

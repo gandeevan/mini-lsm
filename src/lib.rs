@@ -1,18 +1,16 @@
-
-// TODO: Explore a cleaner way to incorporate all files into the compilation list, 
+// TODO: Explore a cleaner way to incorporate all files into the compilation list,
 // potentially eliminating the need to explicitly enumerate each module here.
 mod buffer_consumer;
+mod error;
 mod file_writer;
 mod log_writer;
 mod memtable;
-mod error;
 mod write_batch;
 
 use std::fmt::Write;
 
 use log_writer::LogWriter;
 use memtable::Memtable;
-
 
 pub struct DB {
     memtable: Memtable,
@@ -23,8 +21,7 @@ pub struct Iter<'a> {
     it: memtable::Iter<'a>,
 }
 
-impl<'a> Iterator for Iter<'a>
-{
+impl<'a> Iterator for Iter<'a> {
     type Item = (&'a [u8], &'a [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -32,8 +29,7 @@ impl<'a> Iterator for Iter<'a>
     }
 }
 
-impl DB
-{
+impl DB {
     pub fn new(log_file: &str) -> error::Result<DB> {
         let log_writer = LogWriter::new(log_file, false)?;
         Ok(DB {
@@ -48,7 +44,10 @@ impl DB
         self.insert_or_update_batch(&wb)
     }
 
-    pub fn insert_or_update_batch(&mut self, batch: &write_batch::WriteBatch) -> Result<(), error::Error> {
+    pub fn insert_or_update_batch(
+        &mut self,
+        batch: &write_batch::WriteBatch,
+    ) -> Result<(), error::Error> {
         for (key, value) in batch.iter() {
             self.memtable.insert_or_update(key, value);
         }
@@ -140,8 +139,10 @@ mod test_db {
         let count = 1000;
 
         // Check that a non-exisitent key returns an empty value
-        assert!(kvstore.get((1 as i32).to_le_bytes().as_ref()).expect("Get failed").is_none());
-        
+        assert!(kvstore
+            .get((1 as i32).to_le_bytes().as_ref())
+            .expect("Get failed")
+            .is_none());
 
         // Populate the KVStore and validate the data
         let mut data = test_utils::populate(count, &mut kvstore);
@@ -163,12 +164,16 @@ mod test_db {
 
         // Delete all values and validate that delete returns true
         for (key, _) in data.iter() {
-            assert!(kvstore.delete(key.to_le_bytes().as_ref()).expect("Delete failed"));
+            assert!(kvstore
+                .delete(key.to_le_bytes().as_ref())
+                .expect("Delete failed"));
         }
 
         // Try deleting all the keys again and validate that delete returns false
         for (key, _) in data.iter() {
-            assert!(!kvstore.delete(key.to_le_bytes().as_ref()).expect("Delete failed"));
+            assert!(!kvstore
+                .delete(key.to_le_bytes().as_ref())
+                .expect("Delete failed"));
         }
     }
 
@@ -185,7 +190,10 @@ mod test_db {
 
         let mut result = Vec::new();
         for (key, value) in kvstore
-            .scan(data[start_idx].0.to_le_bytes().as_ref(), &data[end_idx].0.to_le_bytes().as_ref())
+            .scan(
+                data[start_idx].0.to_le_bytes().as_ref(),
+                &data[end_idx].0.to_le_bytes().as_ref(),
+            )
             .expect("range query returned an error")
         {
             let key = i32::from_le_bytes(key.try_into().unwrap());

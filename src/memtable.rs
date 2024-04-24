@@ -26,12 +26,16 @@ impl Memtable {
     }
 
     pub fn insert_or_update(&mut self, key: &[u8], value: &[u8]) -> () {
-        self.table.insert(tinyvec::TinyVec::from(key), tinyvec::TinyVec::from(value));
+        self.table
+            .insert(tinyvec::TinyVec::from(key), tinyvec::TinyVec::from(value));
     }
 
     pub fn get(&self, key: &[u8]) -> Option<&[u8]> {
         // TODO: avoid copying the key to construct the TinyVec
-        return self.table.get(&tinyvec::TinyVec::from(key)).map(|v| v.as_slice());
+        return self
+            .table
+            .get(&tinyvec::TinyVec::from(key))
+            .map(|v| v.as_slice());
     }
 
     pub fn delete(&mut self, key: &[u8]) -> bool {
@@ -42,7 +46,9 @@ impl Memtable {
     pub fn scan(&self, start: &[u8], end: &[u8]) -> Iter {
         // TODO: avoid copying the key to construct the TinyVec
         return Iter {
-            it: self.table.range(tinyvec::TinyVec::from(start)..tinyvec::TinyVec::from(end)),
+            it: self
+                .table
+                .range(tinyvec::TinyVec::from(start)..tinyvec::TinyVec::from(end)),
         };
     }
 }

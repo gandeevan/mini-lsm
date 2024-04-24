@@ -19,20 +19,24 @@ impl<'a> Iterator for WriteBatchIterator<'a> {
             return None;
         }
 
-        let key_len = u32::from_le_bytes(self.wb.entries[self.pos..self.pos+4].try_into().unwrap()) as usize;
-        self.pos += 4;
-        
-        let key = &self.wb.entries[self.pos..self.pos+key_len]; 
-        self.pos += key_len;
-        
-        let value_len =  u32::from_le_bytes(self.wb.entries[self.pos..self.pos+4].try_into().unwrap()) as usize;
+        let key_len =
+            u32::from_le_bytes(self.wb.entries[self.pos..self.pos + 4].try_into().unwrap())
+                as usize;
         self.pos += 4;
 
-        let value = &self.wb.entries[self.pos..self.pos+value_len]; 
+        let key = &self.wb.entries[self.pos..self.pos + key_len];
+        self.pos += key_len;
+
+        let value_len =
+            u32::from_le_bytes(self.wb.entries[self.pos..self.pos + 4].try_into().unwrap())
+                as usize;
+        self.pos += 4;
+
+        let value = &self.wb.entries[self.pos..self.pos + value_len];
         self.pos += value_len;
 
         return Some((key, value));
-    } 
+    }
 }
 
 impl WriteBatch {
@@ -56,9 +60,11 @@ impl WriteBatch {
     }
 
     pub fn append(&mut self, key: &[u8], value: &[u8]) {
-        self.entries.extend_from_slice(&u32::try_from(key.len()).unwrap().to_le_bytes());
+        self.entries
+            .extend_from_slice(&u32::try_from(key.len()).unwrap().to_le_bytes());
         self.entries.extend_from_slice(key);
-        self.entries.extend_from_slice(&u32::try_from(value.len()).unwrap().to_le_bytes());
+        self.entries
+            .extend_from_slice(&u32::try_from(value.len()).unwrap().to_le_bytes());
         self.entries.extend_from_slice(value);
         self.increment_count();
     }
@@ -86,7 +92,6 @@ impl WriteBatch {
         }
     }
 }
-
 
 mod tests {
     use super::WriteBatch;
