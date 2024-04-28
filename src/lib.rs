@@ -80,7 +80,7 @@ mod test_utils {
 
         for (key, value) in data.iter() {
             kvstore
-                .insert_or_update(&key.to_le_bytes(), &value.to_le_bytes())
+                .insert_or_update(&key.to_be_bytes(), &value.to_be_bytes())
                 .expect("Insert failed");
         }
 
@@ -94,7 +94,7 @@ mod test_utils {
 
         for (key, value) in data.iter() {
             kvstore
-                .insert_or_update(&key.to_le_bytes(), &value.to_le_bytes())
+                .insert_or_update(&key.to_be_bytes(), &value.to_be_bytes())
                 .expect("Update failed");
         }
     }
@@ -106,7 +106,7 @@ mod test_utils {
                     .get(key.to_be_bytes().as_ref())
                     .expect("Get failed")
                     .expect("Expected a non-empty value"),
-                value.to_le_bytes()
+                value.to_be_bytes()
             );
         }
     }
@@ -138,7 +138,7 @@ mod test_db {
 
         // Check that a non-exisitent key returns an empty value
         assert!(kvstore
-            .get((1 as i32).to_le_bytes().as_ref())
+            .get((1 as i32).to_be_bytes().as_ref())
             .expect("Get failed")
             .is_none());
 
@@ -163,14 +163,14 @@ mod test_db {
         // Delete all values and validate that delete returns true
         for (key, _) in data.iter() {
             assert!(kvstore
-                .delete(key.to_le_bytes().as_ref())
+                .delete(key.to_be_bytes().as_ref())
                 .expect("Delete failed"));
         }
 
         // Try deleting all the keys again and validate that delete returns false
         for (key, _) in data.iter() {
             assert!(!kvstore
-                .delete(key.to_le_bytes().as_ref())
+                .delete(key.to_be_bytes().as_ref())
                 .expect("Delete failed"));
         }
     }
@@ -189,13 +189,13 @@ mod test_db {
         let mut result = Vec::new();
         for (key, value) in kvstore
             .scan(
-                data[start_idx].0.to_le_bytes().as_ref(),
-                &data[end_idx].0.to_le_bytes().as_ref(),
+                data[start_idx].0.to_be_bytes().as_ref(),
+                data[end_idx].0.to_be_bytes().as_ref(),
             )
             .expect("range query returned an error")
         {
-            let key = i32::from_le_bytes(key.try_into().unwrap());
-            let value = i32::from_le_bytes(value.try_into().unwrap());
+            let key = i32::from_be_bytes(key.try_into().unwrap());
+            let value = i32::from_be_bytes(value.try_into().unwrap());
             result.push((key, value));
         }
         assert_eq!(result, &data[start_idx..end_idx]);

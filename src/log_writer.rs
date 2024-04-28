@@ -55,10 +55,10 @@ impl<'a> LogRecord<'a> {
         let rtype_offset = offset_of!(LogRecord, rtype);
         let payload_offset = offset_of!(LogRecord, payload);
 
-        let record_type = u8::from_le_bytes(bytes_to_type(&bytes[rtype_offset..rtype_offset + 1])?);
+        let record_type = u8::from_be_bytes(bytes_to_type(&bytes[rtype_offset..rtype_offset + 1])?);
         Ok(LogRecord {
-            crc: u32::from_le_bytes(bytes_to_type(&bytes[crc_offset..crc_offset + 4])?),
-            size: u16::from_le_bytes(bytes_to_type(&bytes[size_offset..size_offset + 2])?),
+            crc: u32::from_be_bytes(bytes_to_type(&bytes[crc_offset..crc_offset + 4])?),
+            size: u16::from_be_bytes(bytes_to_type(&bytes[size_offset..size_offset + 2])?),
             rtype: RecordType::from_u8(record_type).ok_or(Error::InvalidRecordType(record_type))?,
             payload: &bytes[payload_offset..],
         })
@@ -107,9 +107,9 @@ impl LogWriter {
     }
 
     fn append_record(&mut self, record: &LogRecord) -> Result<()> {
-        self.fw.append(&record.crc.to_le_bytes())?;
-        self.fw.append(&record.size.to_le_bytes())?;
-        self.fw.append(&record.rtype.value().to_le_bytes())?;
+        self.fw.append(&record.crc.to_be_bytes())?;
+        self.fw.append(&record.size.to_be_bytes())?;
+        self.fw.append(&record.rtype.value().to_be_bytes())?;
         self.fw.append(record.payload)
     }
 
