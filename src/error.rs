@@ -13,11 +13,14 @@ pub enum Error {
     #[error("Invalid record type: `{0}`")]
     InvalidRecordType(u8),
 
+    #[error("Expected a CRC value `{0}` but received value `{1}`")]
+    InvalidCrc(u32, u32),
+
     #[error("IO error: {0}")]
-    Io(#[source] io::Error),
+    Io(#[from] io::Error),
 
     #[error("TryFromSliceError error: {0}")]
-    TryFromSlice(#[source] array::TryFromSliceError),
+    TryFromSlice(#[from] array::TryFromSliceError),
 }
 
 pub type Result<T> = result::Result<T, Error>;

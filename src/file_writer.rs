@@ -1,15 +1,14 @@
 use crate::error::{Error, Result};
+use crate::log_record::DEFAULT_BUFFER_CAPACITY;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
-
-const DEFAULT_BUFFER_CAPACITY: usize = 4096;
 
 pub struct FileWriter {
     writer: BufWriter<File>,
 }
 
 impl FileWriter {
-    pub fn new(filepath: &str, truncate: bool) -> Result<FileWriter> {
+    pub fn new(file_path: &str, truncate: bool) -> Result<FileWriter> {
         let mut options = OpenOptions::new();
         options.create(true);
 
@@ -19,7 +18,7 @@ impl FileWriter {
             options.append(true);
         }
 
-        let file = options.open(filepath).map_err(Error::Io)?;
+        let file = options.open(file_path).map_err(Error::Io)?;
         Ok(FileWriter {
             writer: BufWriter::with_capacity(DEFAULT_BUFFER_CAPACITY, file),
         })
@@ -52,10 +51,10 @@ mod tests {
 
     #[test]
     fn append() {
-        let filepath = "/tmp/test.txt";
+        let file_path = "/tmp/test.txt";
         let mut options = OpenOptions::new();
         options.create(true).write(true).truncate(true);
-        let mut fw = FileWriter::new(filepath, true).expect("failed opening a file handle");
+        let mut fw = FileWriter::new(file_path, true).expect("failed opening a file handle");
 
         let mut random_bytes: Vec<u8> = vec![0; 10 * DEFAULT_BUFFER_CAPACITY];
         rand::thread_rng().fill_bytes(&mut random_bytes);
@@ -72,7 +71,7 @@ mod tests {
         fw.sync().unwrap();
 
         // read file and validate the contents
-        let actual = fs::read(filepath).unwrap();
+        let actual = fs::read(file_path).unwrap();
         assert_eq!(actual, random_bytes);
     }
 }

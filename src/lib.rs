@@ -1,11 +1,15 @@
-// TODO: Explore a cleaner way to incorporate all files into the compilation list,
-// potentially eliminating the need to explicitly enumerate each module here.
 mod buffer_consumer;
 mod error;
+mod file_reader;
 mod file_writer;
+mod lending_iterator;
+mod log_reader;
+mod log_record;
 mod log_writer;
 mod memtable;
+mod wal_recovery;
 mod write_batch;
+use std::{fs, os::unix::fs::MetadataExt, path::Path};
 
 use log_writer::LogWriter;
 use memtable::Memtable;
@@ -29,38 +33,52 @@ impl<'a> Iterator for Iter<'a> {
 
 impl DB {
     pub fn new(log_file: &str) -> error::Result<DB> {
+        let mut memtable = Memtable::new();
+
+        if Path::new(log_file).exists() {
+            let metadata = fs::metadata(log_file)?;
+            if metadata.size() > 0 {
+                wal_recovery::load(log_file, &mut memtable)?;
+            }
+        }
+
         let log_writer = LogWriter::new(log_file, false)?;
         Ok(DB {
-            memtable: Memtable::new(),
+            memtable,
             log_writer,
         })
     }
 
-    pub fn insert_or_update(&mut self, key: &[u8], value: &[u8]) -> Result<(), error::Error> {
+    pub fn insert_or_update(&mut self, key: &[u8], value: &[u8]) -> error::Result<()> {
         let mut wb = write_batch::WriteBatch::new();
-        wb.append(key, value);
-        self.insert_or_update_batch(&wb)
+        wb.insert_or_update(key, value);
+        self.write(&wb)
     }
 
-    pub fn insert_or_update_batch(
-        &mut self,
-        batch: &write_batch::WriteBatch,
-    ) -> Result<(), error::Error> {
+    pub fn write(&mut self, batch: &write_batch::WriteBatch) -> error::Result<()> {
+        self.log_writer.append(batch.as_bytes())?;
         for (key, value) in batch.iter() {
-            self.memtable.insert_or_update(key, value);
+            match value {
+                Some(value) => self.memtable.insert_or_update(key, value),
+                None => {
+                    self.memtable.delete(key);
+                }
+            }
         }
-        self.log_writer.append(batch.as_bytes())
+        Ok(())
     }
 
-    pub fn get(&self, key: &[u8]) -> Result<Option<&[u8]>, String> {
+    pub fn get(&self, key: &[u8]) -> error::Result<Option<&[u8]>> {
         Ok(self.memtable.get(key))
     }
 
-    pub fn delete(&mut self, key: &[u8]) -> Result<bool, String> {
-        Ok(self.memtable.delete(key))
+    pub fn delete(&mut self, key: &[u8]) -> error::Result<()> {
+        let mut wb = write_batch::WriteBatch::new();
+        wb.delete(key);
+        self.write(&wb)
     }
 
-    pub fn scan(&self, start: &[u8], end: &[u8]) -> Result<Iter, String> {
+    pub fn scan(&self, start: &[u8], end: &[u8]) -> error::Result<Iter> {
         let iter = self.memtable.scan(start, end);
         Ok(Iter { it: iter })
     }
@@ -162,16 +180,15 @@ mod test_db {
 
         // Delete all values and validate that delete returns true
         for (key, _) in data.iter() {
-            assert!(kvstore
-                .delete(key.to_be_bytes().as_ref())
-                .expect("Delete failed"));
+            kvstore.delete(key.to_be_bytes().as_ref()).unwrap();
         }
 
-        // Try deleting all the keys again and validate that delete returns false
+        // TODO: Try reading all the keys again and validate that they are deleted
         for (key, _) in data.iter() {
-            assert!(!kvstore
-                .delete(key.to_be_bytes().as_ref())
-                .expect("Delete failed"));
+            assert!(kvstore
+                .get(key.to_be_bytes().as_ref())
+                .expect("Get failed")
+                .is_none());
         }
     }
 

@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn consume() {
         let bytes: [u8; 10] = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4];
-        let mut bc = BufferConsumer::new(&bytes);
+        let bc = BufferConsumer::new(&bytes);
         assert_eq!(bc.remaining(), 10);
 
         let result = bc.consume(1);
