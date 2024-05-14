@@ -75,18 +75,18 @@ impl<'a> Iterator for WriteBatchIterator<'a> {
     }
 }
 
-impl Default for WriteBatch {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Represents a write batch, which is a collection of write operations to be applied atomically.
 /// Represents a batch of write operations.
 ///
 /// A `WriteBatch` is used to group multiple write operations together, such as inserts and deletes,
 /// in order to perform them atomically. It provides methods to add, count, and iterate over the
 /// write operations in the batch.
+impl Default for WriteBatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WriteBatch {
     /// Creates a new empty write batch.
     pub fn new() -> WriteBatch {
@@ -121,6 +121,7 @@ impl WriteBatch {
         self.entries.extend_from_slice(key);
         self.entries
             .extend_from_slice(&u32::try_from(0).unwrap().to_be_bytes());
+        self.increment_count();
     }
 
     /// Adds an insert or update operation to the batch for the given key-value pair.
@@ -146,12 +147,14 @@ impl WriteBatch {
 
     /// Returns true if the write batch is empty, false otherwise.
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.count() == 0
     }
 
     /// Clears all write operations from the batch.
     pub fn clear(&mut self) {
-        self.entries.clear();
+        // Clear the entries vector and reset the count to 0.
+        self.entries.resize(HEADER_SIZE, 0);
+        self.entries.copy_from_slice(&[0; HEADER_SIZE]);
     }
 
     /// Returns the write batch as a byte slice.
@@ -169,9 +172,10 @@ impl WriteBatch {
 }
 
 mod tests {
+    use crate::write_batch::COUNT_OFFSET;
 
     #[test]
-    fn write_and_read() {
+    fn insert_or_update() {
         let mut wb = super::WriteBatch::new();
         let batch_size = 10;
         for i in 0..batch_size {
@@ -189,5 +193,78 @@ mod tests {
             items_read += 1;
         }
         assert_eq!(items_read, batch_size);
+    }
+
+    #[test]
+    fn delete() {
+        let mut wb = super::WriteBatch::new();
+        let key = b"key";
+        let value = b"value";
+        wb.insert_or_update(key, value);
+        assert_eq!(wb.count(), 1);
+
+        wb.delete(key);
+        assert_eq!(wb.count(), 2);
+
+        let mut items_read = 0;
+        for (i, (key, value)) in wb.iter().enumerate() {
+            if i == 0 {
+                assert_eq!(key, b"key");
+                assert_eq!(value, Some(&b"value"[..]));
+            } else if i == 1 {
+                assert_eq!(key, b"key");
+                assert_eq!(value, None);
+            }
+            items_read += 1;
+        }
+        assert_eq!(items_read, 2);
+    }
+
+    #[test]
+    fn clear() {
+        let mut wb = super::WriteBatch::new();
+        let batch_size = 10;
+        for i in 0..batch_size {
+            wb.insert_or_update(&(i as i32).to_be_bytes(), &(i as i32).to_be_bytes());
+        }
+        assert_eq!(wb.count(), batch_size);
+
+        wb.clear();
+        assert_eq!(wb.count(), 0);
+        assert_eq!(wb.len(), super::HEADER_SIZE);
+        assert!(wb.is_empty());
+        assert_eq!(wb.iter().count(), 0);
+    }
+
+    #[test]
+    fn as_bytes() {
+        let mut wb = super::WriteBatch::new();
+        let key = b"key";
+        let value = b"value";
+        wb.insert_or_update(key, value);
+
+        let bytes = wb.as_bytes();
+        assert_eq!(
+            bytes.len(),
+            super::HEADER_SIZE + 4 + key.len() + 4 + value.len()
+        );
+        assert_eq!(&bytes[COUNT_OFFSET..COUNT_OFFSET + 4], 1u32.to_be_bytes());
+        assert_eq!(
+            &bytes[COUNT_OFFSET + 4..super::HEADER_SIZE],
+            &[0; super::HEADER_SIZE - 4]
+        );
+        assert_eq!(
+            &bytes[super::HEADER_SIZE..super::HEADER_SIZE + 4],
+            3u32.to_be_bytes()
+        );
+        assert_eq!(
+            &bytes[super::HEADER_SIZE + 4..super::HEADER_SIZE + 4 + key.len()],
+            key
+        );
+        assert_eq!(
+            &bytes[super::HEADER_SIZE + 4 + key.len()..super::HEADER_SIZE + 4 + key.len() + 4],
+            5u32.to_be_bytes()
+        );
+        assert_eq!(&bytes[super::HEADER_SIZE + 4 + key.len() + 4..], value);
     }
 }
