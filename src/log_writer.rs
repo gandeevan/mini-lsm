@@ -83,10 +83,12 @@ impl LogWriter {
 mod tests {
     use rand::RngCore;
 
+    use crate::log_record::{DEFAULT_BLOCK_SIZE, LOG_RECORD_HEADER_SIZE};
+
     use super::LogWriter;
 
     #[test]
-    fn test_write_small_payload() {
+    fn test_append_small_payload() {
         let log_filepath = "/tmp/test.txt";
         let mut payload: Vec<u8> = vec![0; 256];
         rand::thread_rng().fill_bytes(&mut payload);
@@ -95,11 +97,59 @@ mod tests {
     }
 
     #[test]
-    fn test_write_large_payload() {
+    fn test_append_empty_payload() {
         let log_filepath = "/tmp/test.txt";
-        let mut payload: Vec<u8> = vec![0; 4 * 1024 * 1024];
+        let payload: Vec<u8> = vec![];
+        let mut writer = LogWriter::new(log_filepath, true).expect("Failed creating a log writer");
+        writer
+            .append(&payload)
+            .expect_err("Expected an error when appending an empty payload");
+    }
+
+    #[test]
+    fn test_append_multiple_payloads() {
+        let log_filepath = "/tmp/test.txt";
+        let mut payload1: Vec<u8> = vec![1, 2, 3];
+        let mut payload2: Vec<u8> = vec![4, 5, 6];
+        let mut writer = LogWriter::new(log_filepath, true).expect("Failed creating a log writer");
+        writer
+            .append(&payload1)
+            .expect("Failed writing the first payload");
+        writer
+            .append(&payload2)
+            .expect("Failed writing the second payload");
+    }
+
+    #[test]
+    fn test_append_payload_exceeding_block_capacity() {
+        let log_filepath = "/tmp/test.txt";
+        let mut payload: Vec<u8> = vec![0; 2 * DEFAULT_BLOCK_SIZE];
         rand::thread_rng().fill_bytes(&mut payload);
         let mut writer = LogWriter::new(log_filepath, true).expect("Failed to create a log writer");
         writer.append(&payload).expect("Failed writing the payload");
+        // The payload should spill over to the third block
+        // The first block should contain DEFAULT_BLOCK_SIZE - LOG_RECORD_HEADER_SIZE bytes of the payload
+        // The second block should contain DEFAULT_BLOCK_SIZE - LOG_RECORD_HEADER_SIZE bytes of the payload
+        // The third block should contain 2 * LOG_RECORD_HEADER_SIZE bytes of the payload + LOG_RECORD_HEADER_SIZE bytes of the header
+        assert_eq!(writer.block_pos, 3 * LOG_RECORD_HEADER_SIZE);
+    }
+
+    #[test]
+    fn test_append_large_payloads_with_padding() {
+        let log_filepath = "/tmp/test.txt";
+
+        let payload_size = DEFAULT_BLOCK_SIZE - LOG_RECORD_HEADER_SIZE - 1;
+        let mut payload: Vec<u8> = vec![0; payload_size];
+        rand::thread_rng().fill_bytes(&mut payload);
+        let mut writer = LogWriter::new(log_filepath, true).expect("Failed creating a log writer");
+        writer.append(&payload).expect("Failed writing the payload");
+        assert_eq!(writer.block_pos, payload_size + LOG_RECORD_HEADER_SIZE);
+
+        let payload_size = 1;
+        let mut payload: Vec<u8> = vec![0; payload_size];
+        rand::thread_rng().fill_bytes(&mut payload);
+        writer.append(&payload).expect("Failed writing the payload");
+        // This payload should be written to the next block
+        assert_eq!(writer.block_pos, payload_size + LOG_RECORD_HEADER_SIZE);
     }
 }
