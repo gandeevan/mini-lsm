@@ -28,6 +28,8 @@ impl RecordType {
     }
 }
 
+/// Represents a log record.
+///
 // Record Format:
 //
 // https://github.com/facebook/rocksdb/wiki/Write-Ahead-Log-File-Format
@@ -56,8 +58,14 @@ fn bytes_to_type<'a, T: TryFrom<&'a [u8], Error = TryFromSliceError>>(
     bytes.try_into().map_err(Error::TryFromSlice)
 }
 
-// TODO: add unit tests
 impl<'a> LogRecord<'a> {
+    /// Validates the CRC (Cyclic Redundancy Check) of the log record.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the CRC is valid.
+    ///
+    /// Returns `Err(Error::InvalidCrc)` if the CRC is invalid.
     pub fn validate_crc(&self) -> Result<()> {
         let actual_crc = crc32c::crc32c(self.payload);
         if self.crc == actual_crc {
@@ -66,7 +74,17 @@ impl<'a> LogRecord<'a> {
         Err(Error::InvalidCrc(self.crc, actual_crc))
     }
 
-    #[allow(dead_code)]
+    /// Creates a `LogRecord` from serialized bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - The serialized bytes representing the log record.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the deserialized `LogRecord` if successful.
+    ///
+    /// Returns `Err(Error::WalRecordTooSmall)` if the serialized bytes are too small to form a valid log record.
     pub fn from_serialized_bytes(bytes: &[u8]) -> Result<LogRecord> {
         if bytes.len() < MIN_RECORD_SIZE {
             return Err(Error::WalRecordTooSmall(bytes.len(), MIN_RECORD_SIZE));
@@ -88,6 +106,16 @@ impl<'a> LogRecord<'a> {
         })
     }
 
+    /// Creates a new `LogRecord`.
+    ///
+    /// # Arguments
+    ///
+    /// * `rtype` - The type of the log record.
+    /// * `payload` - The payload of the log record.
+    ///
+    /// # Returns
+    ///
+    /// Returns the newly created `LogRecord`.
     pub fn new(rtype: RecordType, payload: &[u8]) -> LogRecord {
         LogRecord {
             crc: crc32c::crc32c(payload),
@@ -97,6 +125,11 @@ impl<'a> LogRecord<'a> {
         }
     }
 
+    /// Returns the length of the log record.
+    ///
+    /// # Returns
+    ///
+    /// Returns the length of the log record in bytes.
     pub fn len(&self) -> usize {
         // Header (7B) = CRC (4B) + Size (2B) + Type (1B)
         LOG_RECORD_HEADER_SIZE + self.payload.len()
