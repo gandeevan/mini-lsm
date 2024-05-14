@@ -7,12 +7,23 @@ use crate::log_record::{
 };
 use std::cmp::min;
 
+/// The `LogWriter` struct represents a log writer that appends log records to a file.
 pub struct LogWriter {
     fw: FileWriter,
     block_pos: usize,
 }
 
 impl LogWriter {
+    /// Creates a new `LogWriter` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the file where the log records will be written.
+    /// * `truncate` - A flag indicating whether to truncate the file if it already exists.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the `LogWriter` instance if successful, or an error if the file cannot be opened.
     pub fn new(file_path: &str, truncate: bool) -> Result<LogWriter> {
         let file_writer = FileWriter::new(file_path, truncate)?;
         Ok(LogWriter {
@@ -21,10 +32,16 @@ impl LogWriter {
         })
     }
 
+    /// Returns the remaining capacity in the current log block.
     fn remaining_block_capacity(&self) -> usize {
         crate::log_record::DEFAULT_BLOCK_SIZE - self.block_pos
     }
 
+    /// Adds padding to the current log block if necessary.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if successful, or an error if the padding cannot be added.
     fn add_block_padding(&mut self) -> Result<()> {
         let remaining_block_size = DEFAULT_BLOCK_SIZE - self.block_pos;
         if remaining_block_size < MIN_RECORD_SIZE {
@@ -34,6 +51,15 @@ impl LogWriter {
         Ok(())
     }
 
+    /// Appends a log record to the log file.
+    ///
+    /// # Arguments
+    ///
+    /// * `record` - The log record to append.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if successful, or an error if the record cannot be appended.
     fn append_record(&mut self, record: &LogRecord) -> Result<()> {
         self.fw.append(&record.crc.to_be_bytes())?;
         self.fw.append(&record.size.to_be_bytes())?;
@@ -41,6 +67,15 @@ impl LogWriter {
         self.fw.append(record.payload)
     }
 
+    /// Appends a payload to the log file.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - The payload to append.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if successful, or an error if the payload is empty or cannot be appended.
     pub fn append(&mut self, payload: &[u8]) -> Result<()> {
         if payload.is_empty() {
             return Err(Error::ValueError("Payload is empty".to_string()));
