@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Value Error: `{0}`")]
+    ValueError(String),
+
     #[error("The size of the WAL record `{0}` is smaller than the minimum record length `{1}")]
     WalRecordTooSmall(usize, usize),
 

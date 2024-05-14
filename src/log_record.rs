@@ -8,7 +8,7 @@ use std::array::TryFromSliceError;
 // since only 2 bytes are allocated for the `size`
 // field in the log record.
 pub const DEFAULT_BLOCK_SIZE: usize = 32 * 1024;
-pub const LOG_RECORD_HEADER_SIZE: usize = 7;
+pub const LOG_RECORD_HEADER_SIZE: usize = 7; // CRC (4B) + Size (2B) + Type (1B)
 pub const MIN_RECORD_SIZE: usize = LOG_RECORD_HEADER_SIZE + 1; // CRC (4B) + Size (2B) + Type (1B) + Payload (1B)
 pub const BLOCK_PADDING: [u8; LOG_RECORD_HEADER_SIZE] = [0, 0, 0, 0, 0, 0, 0];
 pub const DEFAULT_BUFFER_CAPACITY: usize = 128 * 1024; // TODO: move this to a constants file

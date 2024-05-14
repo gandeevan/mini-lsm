@@ -1,5 +1,5 @@
 use crate::buffer_consumer::BufferConsumer;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::file_writer::FileWriter;
 use crate::log_record::{
     LogRecord, RecordType, BLOCK_PADDING, DEFAULT_BLOCK_SIZE, LOG_RECORD_HEADER_SIZE,
@@ -42,6 +42,10 @@ impl LogWriter {
     }
 
     pub fn append(&mut self, payload: &[u8]) -> Result<()> {
+        if payload.is_empty() {
+            return Err(Error::ValueError("Payload is empty".to_string()));
+        }
+
         let mut record_count = 0;
         let pconsumer = BufferConsumer::new(payload);
         while !pconsumer.done() {
