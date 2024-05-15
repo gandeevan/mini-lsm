@@ -141,3 +141,85 @@ impl<'a> LogRecord<'a> {
         LOG_RECORD_HEADER_SIZE + self.payload.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_crc_valid() {
+        let payload = b"test payload";
+        let crc = crc32c::crc32c(payload);
+        let record = LogRecord {
+            crc,
+            size: payload.len() as u16,
+            rtype: RecordType::Full,
+            payload,
+        };
+        assert_eq!(record.validate_crc().is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_crc_invalid() {
+        let payload = b"test payload";
+        let crc = crc32c::crc32c(b"invalid payload");
+        let record = LogRecord {
+            crc,
+            size: payload.len() as u16,
+            rtype: RecordType::Full,
+            payload,
+        };
+        record.validate_crc().expect_err("Expected an error");
+    }
+
+    #[test]
+    fn test_from_serialized_bytes_valid() {
+        let payload = b"test payload";
+        let crc = crc32c::crc32c(payload);
+        let serialized_bytes: Vec<u8> = [
+            &[(crc >> 24) as u8] as &[u8],
+            &[(crc >> 16) as u8],
+            &[(crc >> 8) as u8],
+            &[crc as u8],
+            &[(payload.len() >> 8) as u8],
+            &[payload.len() as u8],
+            &[RecordType::Full as u8],
+            payload,
+        ]
+        .concat();
+        let record = LogRecord::from_serialized_bytes(&serialized_bytes).unwrap();
+        assert_eq!(record.crc, crc);
+        assert_eq!(record.size, payload.len() as u16);
+        assert_eq!(record.rtype, RecordType::Full);
+        assert_eq!(record.payload, payload);
+    }
+
+    #[test]
+    fn test_from_serialized_bytes_invalid() {
+        let serialized_bytes = [0u8; MIN_RECORD_SIZE - 1];
+        let result = LogRecord::from_serialized_bytes(&serialized_bytes);
+        match result {
+            Err(Error::WalRecordTooSmall(_, _)) => {}
+            _ => panic!("Expected WalRecordTooSmall error"),
+        }
+    }
+
+    #[test]
+    fn test_new() {
+        let payload = b"test payload";
+        let record = LogRecord::new(RecordType::Full, payload);
+        let crc = crc32c::crc32c(payload);
+        assert_eq!(record.crc, crc);
+        assert_eq!(record.size, payload.len() as u16);
+        assert_eq!(record.rtype, RecordType::Full);
+        assert_eq!(record.payload, payload);
+    }
+
+    #[test]
+    fn test_len() {
+        let payload = b"test payload";
+        let record = LogRecord::new(RecordType::Full, payload);
+        let expected_len = LOG_RECORD_HEADER_SIZE + payload.len();
+        assert_eq!(record.len(), expected_len);
+    }
+}
