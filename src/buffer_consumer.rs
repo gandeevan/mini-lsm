@@ -1,5 +1,6 @@
 use std::{cell::RefCell, cmp::min};
 
+/// A buffer consumer that allows consuming bytes from a buffer in a streaming fashion.
 pub struct BufferConsumer<'a> {
     buf: &'a [u8],
     pos: RefCell<usize>,
@@ -7,6 +8,15 @@ pub struct BufferConsumer<'a> {
 }
 
 impl<'a> BufferConsumer<'a> {
+    /// Creates a new `BufferConsumer` with the given buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - The buffer to consume bytes from.
+    ///
+    /// # Returns
+    ///
+    /// A new `BufferConsumer` instance.
     pub fn new(buf: &[u8]) -> BufferConsumer {
         BufferConsumer {
             buf,
@@ -15,6 +25,15 @@ impl<'a> BufferConsumer<'a> {
         }
     }
 
+    /// Consumes the specified number of bytes from the buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `n` - The number of bytes to consume.
+    ///
+    /// # Returns
+    ///
+    /// A slice containing the consumed bytes.
     pub fn consume(&self, n: usize) -> &[u8] {
         let bytes_to_consume = min(n, *self.remaining.borrow());
         let start = *self.pos.borrow();
@@ -24,10 +43,20 @@ impl<'a> BufferConsumer<'a> {
         data
     }
 
+    /// Checks if all bytes in the buffer have been consumed.
+    ///
+    /// # Returns
+    ///
+    /// `true` if all bytes have been consumed, `false` otherwise.
     pub fn done(&self) -> bool {
         *self.remaining.borrow() == 0
     }
 
+    /// Gets the number of remaining bytes in the buffer.
+    ///
+    /// # Returns
+    ///
+    /// The number of remaining bytes.
     pub fn remaining(&self) -> usize {
         *self.remaining.borrow()
     }

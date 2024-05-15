@@ -1,9 +1,15 @@
+/// A trait representing a lending iterator.
 pub trait LendingIterator {
-    // This is a GAT, meaning the type returned can borrow from `Self`
+    /// The type returned by the iterator, which can borrow from `Self`.
     type Item<'a>
     where
         Self: 'a;
 
-    // The core method, similar to the standard iterator trait
+    /// Advances the iterator and returns the next item, if any.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(item)`: If there is a next item, returns the borrowed item.
+    /// - `None`: If there are no more items in the iterator.
     fn next<'a>(&'a mut self) -> Option<Self::Item<'a>>;
 }
