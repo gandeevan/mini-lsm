@@ -1,8 +1,7 @@
 use crate::error::{Error, Result};
-use memoffset::offset_of;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
-use std::array::TryFromSliceError;
+use std::{array::TryFromSliceError, mem};
 
 // BLOCK_SIZE should not be greater than 65535
 // since only 2 bytes are allocated for the `size`
@@ -13,7 +12,12 @@ pub const MIN_RECORD_SIZE: usize = LOG_RECORD_HEADER_SIZE + 1; // CRC (4B) + Siz
 pub const BLOCK_PADDING: [u8; LOG_RECORD_HEADER_SIZE] = [0, 0, 0, 0, 0, 0, 0];
 pub const DEFAULT_BUFFER_CAPACITY: usize = 128 * 1024; // TODO: move this to a constants file
 
-#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
+const CRC_OFFSET: usize = 0;
+const SIZE_OFFSET: usize = 4;
+const TYPE_OFFSET: usize = 6;
+const PAYLOAD_OFFSET: usize = 7;
+
+#[derive(Clone, Copy, FromPrimitive, ToPrimitive, PartialEq, Debug)]
 pub enum RecordType {
     None = 0,
     First = 1,
@@ -45,6 +49,7 @@ impl RecordType {
 // The type is used to group a bunch of records together to represent
 // blocks that are larger than kBlockSize
 // Payload = Byte stream as long as specified by the payload size
+#[derive(Debug, PartialEq)]
 pub struct LogRecord<'a> {
     pub crc: u32,
     pub size: u16,
@@ -75,7 +80,6 @@ impl<'a> LogRecord<'a> {
     }
 
     /// Creates a `LogRecord` from serialized bytes.
-    ///
     /// # Arguments
     ///
     /// * `bytes` - The serialized bytes representing the log record.
@@ -86,23 +90,25 @@ impl<'a> LogRecord<'a> {
     ///
     /// Returns `Err(Error::WalRecordTooSmall)` if the serialized bytes are too small to form a valid log record.
     pub fn from_serialized_bytes(bytes: &[u8]) -> Result<LogRecord> {
+        let phantom_record = LogRecord::new(RecordType::Full, bytes);
         if bytes.len() < MIN_RECORD_SIZE {
             return Err(Error::WalRecordTooSmall(bytes.len(), MIN_RECORD_SIZE));
         }
+        let payload_size = u16::from_be_bytes(bytes_to_type(
+            &bytes[SIZE_OFFSET..SIZE_OFFSET + mem::size_of_val(&phantom_record.size)],
+        )?);
 
-        let crc_offset = offset_of!(LogRecord, crc);
-        let size_offset = offset_of!(LogRecord, size);
-        let rtype_offset = offset_of!(LogRecord, rtype);
-        let payload_offset = offset_of!(LogRecord, payload);
-        let payload_size = u16::from_be_bytes(bytes_to_type(&bytes[size_offset..size_offset + 2])?);
-
-        let record_type = u8::from_be_bytes(bytes_to_type(&bytes[rtype_offset..rtype_offset + 1])?);
+        let record_type = u8::from_be_bytes(bytes_to_type(
+            &bytes[TYPE_OFFSET..TYPE_OFFSET + mem::size_of_val(&phantom_record.rtype)],
+        )?);
         Ok(LogRecord {
-            crc: u32::from_be_bytes(bytes_to_type(&bytes[crc_offset..crc_offset + 4])?),
+            crc: u32::from_be_bytes(bytes_to_type(
+                &bytes[CRC_OFFSET..CRC_OFFSET + mem::size_of_val(&phantom_record.crc)],
+            )?),
             size: payload_size,
             rtype: RecordType::from_u8(record_type).ok_or(Error::InvalidRecordType(record_type))?,
-            payload: &bytes[payload_offset
-                ..(payload_offset + (TryInto::<usize>::try_into(payload_size).unwrap()))],
+            payload: &bytes[PAYLOAD_OFFSET
+                ..(PAYLOAD_OFFSET + (TryInto::<usize>::try_into(payload_size).unwrap()))],
         })
     }
 
