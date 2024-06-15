@@ -90,7 +90,7 @@ impl<'a> LogRecord<'a> {
     ///
     /// Returns `Err(Error::WalRecordTooSmall)` if the serialized bytes are too small to form a valid log record.
     pub fn from_serialized_bytes(bytes: &[u8]) -> Result<LogRecord> {
-        let phantom_record = LogRecord::new(RecordType::Full, bytes);
+        let phantom_record = LogRecord::phantom();
         if bytes.len() < MIN_RECORD_SIZE {
             return Err(Error::WalRecordTooSmall(bytes.len(), MIN_RECORD_SIZE));
         }
@@ -128,6 +128,15 @@ impl<'a> LogRecord<'a> {
             rtype,
             size: payload.len().try_into().unwrap(),
             payload,
+        }
+    }
+
+    fn phantom() -> LogRecord<'a> {
+        LogRecord {
+            crc: 0,
+            rtype: RecordType::None,
+            size: 0,
+            payload: &[],
         }
     }
 

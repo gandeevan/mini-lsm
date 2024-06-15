@@ -1,6 +1,5 @@
 mod buffer_consumer;
 mod error;
-mod file_reader;
 mod file_writer;
 mod lending_iterator;
 mod log_reader;
@@ -8,7 +7,7 @@ mod log_record;
 mod log_writer;
 mod memtable;
 mod wal_recovery;
-mod write_batch;
+pub mod write_batch;
 use std::{fs, os::unix::fs::MetadataExt, path::Path};
 
 use log_writer::LogWriter;
@@ -55,16 +54,9 @@ impl DB {
         self.write(&wb)
     }
 
-    pub fn write(&mut self, batch: &write_batch::WriteBatch) -> error::Result<()> {
-        self.log_writer.append(batch.as_bytes())?;
-        for (key, value) in batch.iter() {
-            match value {
-                Some(value) => self.memtable.insert_or_update(key, value),
-                None => {
-                    self.memtable.delete(key);
-                }
-            }
-        }
+    pub fn write(&mut self, wb: &write_batch::WriteBatch) -> error::Result<()> {
+        self.log_writer.append(wb.as_bytes())?;
+        wal_recovery::consume_write_batch(&mut self.memtable, wb);
         Ok(())
     }
 
@@ -72,6 +64,8 @@ impl DB {
         Ok(self.memtable.get(key))
     }
 
+    /// Deletes a key from the KVStore.
+    /// Performs a logical delete by inserting an empty value for the key.
     pub fn delete(&mut self, key: &[u8]) -> error::Result<()> {
         let mut wb = write_batch::WriteBatch::new();
         wb.delete(key);
@@ -86,6 +80,8 @@ impl DB {
 
 #[cfg(test)]
 mod test_utils {
+    use std::collections::HashSet;
+
     use num_traits::ToBytes;
 
     use super::*;
@@ -117,33 +113,60 @@ mod test_utils {
         }
     }
 
-    pub fn validate(expected: &Vec<(i32, i32)>, kvstore: &DB) {
-        for (key, value) in expected {
-            assert_eq!(
-                kvstore
-                    .get(key.to_be_bytes().as_ref())
-                    .expect("Get failed")
-                    .expect("Expected a non-empty value"),
-                value.to_be_bytes()
-            );
+    pub fn validate_key_values(
+        data: &Vec<(i32, i32)>,
+        deleted_keys: Option<&HashSet<i32>>,
+        kvstore: &DB,
+    ) {
+        for (key, value) in data {
+            if deleted_keys.is_some() && deleted_keys.unwrap().get(key).is_some() {
+                assert!(
+                    kvstore
+                        .get(key.to_be_bytes().as_ref())
+                        .expect("Get failed")
+                        .is_none(),
+                    "Expected key {} to be deleted",
+                    key
+                );
+            } else {
+                assert_eq!(
+                    kvstore
+                        .get(key.to_be_bytes().as_ref())
+                        .expect("Get failed")
+                        .expect(&format!("Expected a non-empty value for key {}", key)),
+                    value.to_be_bytes()
+                );
+            }
+        }
+    }
+
+    pub fn delete_keys(keys: &HashSet<i32>, kvstore: &mut DB) {
+        for key in keys {
+            kvstore
+                .delete(key.to_be_bytes().as_ref())
+                .expect("Delete failed");
         }
     }
 }
 
 #[cfg(test)]
-mod test_db {
+mod test_basic_operations {
+    use tempfile::NamedTempFile;
 
-    use num_traits::ToBytes;
+    use self::test_utils::{delete_keys, validate_key_values};
 
     use super::*;
 
     #[test]
     fn insert_or_update() {
-        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
+        let temp_file: NamedTempFile = NamedTempFile::new().unwrap();
+        let log_file_path = temp_file.path().to_str().unwrap();
+
+        let mut kvstore = DB::new(log_file_path).expect("Failed to create a new DB");
         let count = 1000;
 
         // Test inserts
-        let mut data = test_utils::populate(count, &mut kvstore);
+        let mut data: Vec<(i32, i32)> = test_utils::populate(count, &mut kvstore);
 
         // Test updates
         test_utils::update(&mut data, &mut kvstore)
@@ -151,7 +174,10 @@ mod test_db {
 
     #[test]
     fn get() {
-        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
+        let temp_file: NamedTempFile = NamedTempFile::new().unwrap();
+        let log_file_path = temp_file.path().to_str().unwrap();
+
+        let mut kvstore = DB::new(&log_file_path).expect("Failed to create a new DB");
         let count = 1000;
 
         // Check that a non-exisitent key returns an empty value
@@ -162,39 +188,42 @@ mod test_db {
 
         // Populate the KVStore and validate the data
         let mut data = test_utils::populate(count, &mut kvstore);
-        test_utils::validate(&data, &mut kvstore);
+        test_utils::validate_key_values(&data, None, &mut kvstore);
 
         // Update all the values and validate the data
         test_utils::update(&mut data, &mut kvstore);
-        test_utils::validate(&data, &mut kvstore);
+        test_utils::validate_key_values(&data, None, &mut kvstore);
     }
 
     #[test]
     fn delete() {
-        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
+        let temp_file: NamedTempFile = NamedTempFile::new().unwrap();
+        let log_file_path = temp_file.path().to_str().unwrap();
+
+        let mut kvstore = DB::new(&log_file_path).expect("Failed to create a new DB");
         let count = 1000;
 
         // Populate the KVStore and validate the data
         let data = test_utils::populate(count, &mut kvstore);
-        test_utils::validate(&data, &mut kvstore);
+        test_utils::validate_key_values(&data, None, &mut kvstore);
 
-        // Delete all values and validate that delete returns true
-        for (key, _) in data.iter() {
-            kvstore.delete(key.to_be_bytes().as_ref()).unwrap();
+        // Delete half the keys and validate that they are deleted
+        let mut keys_to_delete = std::collections::HashSet::new();
+        for (idx, (key, _)) in data.iter().enumerate() {
+            if idx % 2 == 0 {
+                keys_to_delete.insert(*key);
+            }
         }
-
-        // TODO: Try reading all the keys again and validate that they are deleted
-        for (key, _) in data.iter() {
-            assert!(kvstore
-                .get(key.to_be_bytes().as_ref())
-                .expect("Get failed")
-                .is_none());
-        }
+        delete_keys(&keys_to_delete, &mut kvstore);
+        validate_key_values(&data, Some(&keys_to_delete), &kvstore);
     }
 
     #[test]
     fn scan() {
-        let mut kvstore = DB::new("/tmp/log.txt").expect("Failed to create a new DB");
+        let temp_file: NamedTempFile = NamedTempFile::new().unwrap();
+        let log_file_path = temp_file.path().to_str().unwrap();
+
+        let mut kvstore = DB::new(&log_file_path).expect("Failed to create a new DB");
         let count = 1000;
 
         let mut data = test_utils::populate(count, &mut kvstore);
@@ -216,5 +245,55 @@ mod test_db {
             result.push((key, value));
         }
         assert_eq!(result, &data[start_idx..end_idx]);
+    }
+}
+
+#[cfg(test)]
+/// Module for testing recovery functionality.
+mod test_recovery {
+    use tempfile::NamedTempFile;
+
+    use super::*;
+    use crate::test_utils::{delete_keys, validate_key_values};
+
+    #[test]
+    fn recovery() {
+        let temp_file: NamedTempFile = NamedTempFile::new().unwrap();
+        let log_file_path = temp_file.path().to_str().unwrap();
+
+        let mut kvstore = DB::new(&log_file_path).expect("Failed to create a new DB");
+        let count = 1000;
+
+        /**********************************/
+        /*           STAGE 1              */
+        /* Basic CRUD Operations Testing  */
+        /**********************************/
+
+        // Insert initial set of values into the database
+        let mut data = test_utils::populate(count, &mut kvstore);
+        validate_key_values(&data, None, &kvstore);
+
+        // Update certain values in the database
+        test_utils::update(&mut data, &mut kvstore);
+        validate_key_values(&data, None, &kvstore);
+
+        // Delete every second key from the database
+        let mut keys_to_delete = std::collections::HashSet::new();
+        for (idx, (key, _)) in data.iter().enumerate() {
+            if idx % 2 == 0 {
+                keys_to_delete.insert(*key);
+            }
+        }
+        delete_keys(&keys_to_delete, &mut kvstore);
+        validate_key_values(&data, Some(&keys_to_delete), &kvstore);
+
+        /**********************************/
+        /*           STAGE 2              */
+        /*       Recovery Testing         */
+        /**********************************/
+
+        // Re-instantiate the database to simulate recovery and validate the integrity of data post-recovery
+        let kvstore = DB::new(log_file_path).expect("Failed to create a new DB");
+        validate_key_values(&data, Some(&keys_to_delete), &kvstore);
     }
 }

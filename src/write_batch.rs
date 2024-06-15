@@ -1,3 +1,5 @@
+use crate::log_record::{LogRecord, RecordType};
+
 const HEADER_SIZE: usize = 16;
 const COUNT_OFFSET: usize = 0;
 
@@ -26,8 +28,8 @@ impl<'a> WriteBatchIterator<'a> {
 ///
 /// # Example
 ///
-/// ```
-/// use mini_lsm::WriteBatch;
+/// ```ignore
+/// use mini_lsm::write_batch::WriteBatch;
 ///
 /// let mut write_batch = WriteBatch::new();
 /// write_batch.insert_or_update(b"key1", Some(b"value1"));
@@ -116,12 +118,7 @@ impl WriteBatch {
     ///
     /// * `key` - The key to delete.
     pub fn delete(&mut self, key: &[u8]) {
-        self.entries
-            .extend_from_slice(&u32::try_from(key.len()).unwrap().to_be_bytes());
-        self.entries.extend_from_slice(key);
-        self.entries
-            .extend_from_slice(&u32::try_from(0).unwrap().to_be_bytes());
-        self.increment_count();
+        self.insert_or_update(key, &[]);
     }
 
     /// Adds an insert or update operation to the batch for the given key-value pair.
@@ -136,7 +133,9 @@ impl WriteBatch {
         self.entries.extend_from_slice(key);
         self.entries
             .extend_from_slice(&u32::try_from(value.len()).unwrap().to_be_bytes());
-        self.entries.extend_from_slice(value);
+        if value.len() > 0 {
+            self.entries.extend_from_slice(value);
+        }
         self.increment_count();
     }
 
@@ -168,6 +167,50 @@ impl WriteBatch {
             payload: &self.entries,
             pos: HEADER_SIZE,
         }
+    }
+}
+
+pub struct WriteBatchBuilder {
+    wb: WriteBatch,
+    ready: bool,
+}
+
+impl WriteBatchBuilder {
+    pub fn new() -> WriteBatchBuilder {
+        let mut wb = WriteBatch::new();
+        wb.entries.clear();
+        WriteBatchBuilder { wb, ready: false }
+    }
+
+    pub fn accumulate_record(&mut self, record: &LogRecord) -> crate::error::Result<()> {
+        record.validate_crc()?;
+        match record.rtype {
+            RecordType::First | RecordType::Middle => {
+                self.wb.entries.extend_from_slice(record.payload);
+            }
+            RecordType::Full | RecordType::Last => {
+                self.wb.entries.extend_from_slice(record.payload);
+                self.ready = true
+            }
+            RecordType::None => {
+                assert!(false, "unexpected record type");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn consume(&mut self) {
+        self.wb.entries.clear();
+        self.ready = false;
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    pub fn get_write_batch(&self) -> &WriteBatch {
+        assert!(self.is_ready());
+        &self.wb
     }
 }
 

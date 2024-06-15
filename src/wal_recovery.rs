@@ -3,13 +3,15 @@
 /// WAL recovery is responsible for loading the WAL file into the memtable.
 ///
 use crate::{
-    error, lending_iterator::LendingIterator, log_reader::LogReader, log_record::RecordType,
-    memtable::Memtable, write_batch::WriteBatchIterator,
+    error,
+    lending_iterator::LendingIterator,
+    log_reader::LogReader,
+    memtable::Memtable,
+    write_batch::{WriteBatch, WriteBatchBuilder},
 };
 
-fn handle_payload(memtable: &mut Memtable, payload: &[u8]) {
-    let wb_iter = WriteBatchIterator::from_payload(payload);
-    for (key, value) in wb_iter {
+pub fn consume_write_batch(memtable: &mut Memtable, wb: &WriteBatch) {
+    for (key, value) in wb.iter() {
         match value {
             Some(value) => memtable.insert_or_update(key, value),
             None => {
@@ -39,9 +41,9 @@ fn handle_payload(memtable: &mut Memtable, payload: &[u8]) {
 ///
 /// # Example
 ///
-/// ```rust
-/// use crate::wal_recovery::load;
-/// use crate::memtable::Memtable;
+/// ```ignore
+/// use mini_lsm::wal_recovery::load;
+/// use mini_lsm::memtable::Memtable;
 ///
 /// let mut memtable = Memtable::new();
 /// let log_file = "/path/to/wal.log";
@@ -52,27 +54,17 @@ fn handle_payload(memtable: &mut Memtable, payload: &[u8]) {
 /// ```
 ///
 pub fn load(log_file: &str, memtable: &mut Memtable) -> error::Result<()> {
-    let mut buffer: Vec<u8> = Vec::new();
     let log_reader = LogReader::new(log_file)?;
+    let mut wb_builder = WriteBatchBuilder::new();
+
     let mut iter = log_reader.to_iter()?;
     while let Some(record_or_error) = iter.next() {
         let record = record_or_error?;
         record.validate_crc()?;
-        match record.rtype {
-            RecordType::Full => {
-                handle_payload(memtable, record.payload);
-            }
-            RecordType::First | RecordType::Middle => {
-                buffer.extend_from_slice(record.payload);
-            }
-            RecordType::Last => {
-                buffer.extend_from_slice(record.payload);
-                handle_payload(memtable, &buffer);
-                buffer.clear();
-            }
-            RecordType::None => {
-                assert!(false, "unexpected record type")
-            }
+        wb_builder.accumulate_record(&record)?;
+        if wb_builder.is_ready() {
+            consume_write_batch(memtable, wb_builder.get_write_batch());
+            wb_builder.consume();
         }
     }
     Ok(())

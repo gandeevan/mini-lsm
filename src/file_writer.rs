@@ -76,14 +76,16 @@ impl FileWriter {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rand::{Rng, RngCore};
     use std::fs;
-
-    use super::*;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn append() {
-        let file_path = "/tmp/test.txt";
+        let temp_file = NamedTempFile::new().unwrap();
+        let file_path = temp_file.path().to_str().unwrap();
+
         let mut options = OpenOptions::new();
         options.create(true).write(true).truncate(true);
         let mut fw = FileWriter::new(file_path, true).expect("failed opening a file handle");
@@ -108,7 +110,9 @@ mod tests {
     }
     #[test]
     fn append_empty_data() {
-        let file_path = "/tmp/test.txt";
+        let temp_file = NamedTempFile::new().unwrap();
+        let file_path = temp_file.path().to_str().unwrap();
+
         let mut fw = FileWriter::new(file_path, true).expect("failed opening a file handle");
 
         // Append empty data
@@ -122,7 +126,9 @@ mod tests {
 
     #[test]
     fn append_large_data() {
-        let file_path = "/tmp/test.txt";
+        let temp_file = NamedTempFile::new().unwrap();
+        let file_path = temp_file.path().to_str().unwrap();
+
         let mut fw = FileWriter::new(file_path, true).expect("failed opening a file handle");
 
         let mut random_bytes: Vec<u8> = vec![0; 100 * DEFAULT_BUFFER_CAPACITY];
@@ -140,7 +146,9 @@ mod tests {
 
     #[test]
     fn append_multiple_times() {
-        let file_path = "/tmp/test.txt";
+        let temp_file = NamedTempFile::new().unwrap();
+        let file_path = temp_file.path().to_str().unwrap();
+
         let mut fw = FileWriter::new(file_path, true).expect("failed opening a file handle");
 
         let mut random_bytes: Vec<u8> = vec![0; 10 * DEFAULT_BUFFER_CAPACITY];
